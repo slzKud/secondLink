@@ -11,6 +11,7 @@
  *******************************************************************************/
 
 #include "CH58x_common.h"
+#include "printf.h"
 // 支持的最大接口数量
 #define USB_INTERFACE_MAX_NUM       1
 // 接口号的最大值，例程只有一个接口，接口号为0
@@ -534,8 +535,8 @@ int main()
     SetSysClock(CLK_SOURCE_PLL_60MHz);
 
     DebugInit();        //配置串口1用来prinft来debug
-    PRINT(f("start\n");
-    UART1_SendString("start\n", sizeof("start\n"));
+    printf("start,%d\n",1);
+    //UART1_SendString("start\n", sizeof("start\n"));
     pEP0_RAM_Addr = EP0_Databuf;    //配置缓存区64字节。
     pEP1_RAM_Addr = EP1_Databuf;
     GPIOB_ModeCfg(GPIO_Pin_4, GPIO_ModeOut_PP_5mA);

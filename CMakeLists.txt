@@ -15,8 +15,9 @@ enable_language(ASM)
 # Add OpenWCH SDK
 add_subdirectory(openwch)
 
+
 # Add project sources
-add_executable(ch58x src/main.c)
+add_executable(ch58x src/main.c src/printf.c)
 
 target_link_libraries(ch58x OpenWCH58x)
 # Generate .bin and .hex
