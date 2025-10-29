@@ -12,6 +12,7 @@
 
 #include "CH58x_common.h"
 #include "printf.h"
+#include "hid/simple_hid.h"
 // 支持的最大接口数量
 #define USB_INTERFACE_MAX_NUM       1
 // 接口号的最大值，例程只有一个接口，接口号为0
@@ -512,7 +513,7 @@ void USB_DevTransProcess(void)  //USB设备传输中断处理
 void DevHIDReport(void)
 {
     memcpy(pEP1_IN_DataBuf, HID_Buf, HID_MsgLen);
-    DevEP1_IN_Deal(DevEP1SIZE);
+    DevEP1_IN_Deal(HID_MsgLen);
 }
 
 /*********************************************************************
@@ -560,7 +561,7 @@ void USB2_DevTransProcess(void)  //USB设备传输中断处理
                     switch(U2SetupReqCode)//这个值会在收到SETUP包时赋值。在后面会有SETUP包处理程序，对应控制传输的设置阶段。
                     {
                         case USB_GET_DESCRIPTOR:    //USB标准命令，主机从USB设备获取描述
-                            printf("U2 USB_GET_DESCRIPTOR 1\n");
+                            //printf("U2 USB_GET_DESCRIPTOR 1\n");
                             len = U2SetupReqLen >= U2DevEP0SIZE ? U2DevEP0SIZE : U2SetupReqLen; // 本次包传输长度。最长为64字节，超过64字节的分多次处理，前几次要满包。
                             memcpy(pU2EP0_DataBuf, U2pDescr, len);//memcpy:内存拷贝函数，从(二号位)地址拷贝(三号位)字符串长度到(一号位)地址中
                             //DMA直接与内存相连，会检测到内存的改写，而后不用单片机控制就可以将内存中的数据发送出去。如果只是两个数组互相赋值，不涉及与DMA匹配的物理内存，就无法触发DMA。
@@ -570,7 +571,7 @@ void USB2_DevTransProcess(void)  //USB设备传输中断处理
                             R8_U2EP0_CTRL ^= RB_UEP_T_TOG;   // 同步切换。IN方向（对于单片机就是T方向）的PID中的DATA0和DATA1切换
                             break;                  //赋值完端点控制寄存器的握手包响应（ACK、NAK、STALL），由硬件打包成符合规范的包，DMA自动发送
                         case USB_SET_ADDRESS:       //USB标准命令，主机为设备设置一个唯一地址，范围0～127，0为默认地址
-                            printf("U2 USB_SET_ADDRESS 2\n");
+                            //printf("U2 USB_SET_ADDRESS 2\n");
                             R8_USB2_DEV_AD = (R8_USB2_DEV_AD & RB_UDA_GP_BIT) | U2SetupReqLen;
                                     //7位地址+最高位的用户自定义地址（默认为1），或上“包传输长度”（这里的“包传输长度”在后面赋值成了地址位）
                             R8_U2EP0_CTRL = UEP_R_RES_ACK | UEP_T_RES_NAK;
@@ -952,7 +953,7 @@ void USB2_DevTransProcess(void)  //USB设备传输中断处理
 void U2DevHIDReport(void)
 {
     memcpy(pU2EP1_IN_DataBuf, U2HID_Buf, U2HID_MsgLen);
-    U2DevEP1_IN_Deal(U2DevEP1SIZE);
+    U2DevEP1_IN_Deal(U2HID_MsgLen);
 }
 
 /*********************************************************************
@@ -1017,68 +1018,10 @@ int main()
 
     while(1)
     {//模拟传输4个字节的数据，实际传输根据用户需要自行修改
-        //GPIOB_ResetBits(GPIO_Pin_4);
-        //mDelaymS(1000);
-        if(Ready)
-        {
-            Ready = 0;
-            HID_MsgLen=4;
-            HID_Buf[0]=0x05;
-            HID_Buf[1]=0x10;
-            HID_Buf[2]=0x20;
-            HID_Buf[3]=0x11;
-            DevHIDReport();
-        }
-        mDelaymS(100);
-
-        if(Ready)
-        {
-            Ready = 0;
-            HID_MsgLen=4;
-            HID_Buf[0]=0x0A;
-            HID_Buf[1]=0x15;
-            HID_Buf[2]=0x25;
-            HID_Buf[3]=0x22;
-            DevHIDReport();
-        }
-        mDelaymS(100);
-
-        if(Ready)
-        {
-            Ready = 0;
-            HID_MsgLen=4;
-            HID_Buf[0]=0x0E;
-            HID_Buf[1]=0x1A;
-            HID_Buf[2]=0x2A;
-            HID_Buf[3]=0x44;
-            DevHIDReport();
-        }
-        mDelaymS(100);
-
-        if(Ready)
-        {
-            Ready = 0;
-            HID_MsgLen=4;
-            HID_Buf[0]=0x10;
-            HID_Buf[1]=0x1E;
-            HID_Buf[2]=0x2E;
-            HID_Buf[3]=0x88;
-            DevHIDReport();
-        }
-        mDelaymS(100);
-        if(U2Ready)
-        {
-            U2Ready = 0;
-            U2HID_MsgLen=4;
-            U2HID_Buf[0]=0x10;
-            U2HID_Buf[1]=0x1E;
-            U2HID_Buf[2]=0x2E;
-            U2HID_Buf[3]=0x88;
-            U2DevHIDReport();
-        }
-        mDelaymS(100);
-        //GPIOB_SetBits(GPIO_Pin_4);
-        //mDelaymS(1000);
+        GPIOB_ResetBits(GPIO_Pin_4);
+        mDelaymS(2000);
+        GPIOB_SetBits(GPIO_Pin_4);
+        mDelaymS(2000);
     }
     
 
@@ -1093,6 +1036,7 @@ int main()
  */
 void DevEP1_OUT_Deal(uint8_t l)
 { /* 用户可自定义 */
+    /*
     uint8_t i;
 
     for(i = 0; i < l; i++)
@@ -1100,6 +1044,26 @@ void DevEP1_OUT_Deal(uint8_t l)
         pEP1_IN_DataBuf[i] = ~pEP1_OUT_DataBuf[i];
     }
     DevEP1_IN_Deal(l);
+    // 这里将数据复制到设备2的EP1
+    if(U2Ready)
+    {
+        memcpy(pU2EP1_IN_DataBuf,pEP1_OUT_DataBuf,l);
+        U2DevEP1_IN_Deal(l);
+    }
+    */
+    if(*(pEP1_OUT_DataBuf)==MAGIC_CODE_1 || *(pEP1_OUT_DataBuf+1)==MAGIC_CODE_2){
+        uint8_t *resp_data=NULL;
+        uint8_t resp_data_length=0;
+        int ret=-1;
+        print_hex("port data",pEP1_OUT_DataBuf,l);
+        ret=parse_data(pEP1_OUT_DataBuf,l,0,&resp_data,&resp_data_length);
+        printf("parse_data:ret=%d,resp_data_length=%d\n",ret,resp_data_length);
+        print_hex("parse_data:resp_data",resp_data,resp_data_length);
+        memset(pEP1_IN_DataBuf,0,64);
+        memcpy(pEP1_IN_DataBuf,resp_data,resp_data_length);
+        DevEP1_IN_Deal(64);
+    }
+    // TODO: Recv Data
 }
 
 
@@ -1126,6 +1090,7 @@ void USB_IRQHandler(void) /* USB中断服务程序,使用寄存器组1 */
  */
 void U2DevEP1_OUT_Deal(uint8_t l)
 { /* 用户可自定义 */
+    /*
     uint8_t i;
 
     for(i = 0; i < l; i++)
@@ -1133,6 +1098,25 @@ void U2DevEP1_OUT_Deal(uint8_t l)
         pU2EP1_IN_DataBuf[i] = pU2EP1_OUT_DataBuf[i];
     }
     U2DevEP1_IN_Deal(l);
+   // 这里将数据复制到设备1的EP1
+   if(Ready)
+    {
+        memcpy(pEP1_IN_DataBuf,pU2EP1_OUT_DataBuf,l);
+        DevEP1_IN_Deal(l);
+    }
+    */
+    if(*(pU2EP1_OUT_DataBuf)==MAGIC_CODE_1 || *(pU2EP1_OUT_DataBuf+1)==MAGIC_CODE_2){
+        uint8_t *resp_data=NULL;
+        uint8_t resp_data_length=0;
+        int ret=-1;
+        print_hex("usb 2port data",pU2EP1_OUT_DataBuf,l);
+        ret=parse_data(pU2EP1_OUT_DataBuf,l,0,&resp_data,&resp_data_length);
+        printf("parse_data:ret=%d,resp_data_length=%d\n",ret,resp_data_length);
+        print_hex("parse_data:resp_data",resp_data,resp_data_length);
+        memset(pU2EP1_IN_DataBuf,0,64);
+        memcpy(pU2EP1_IN_DataBuf,resp_data,resp_data_length);
+        U2DevEP1_IN_Deal(64);
+    }
 }
 
 
