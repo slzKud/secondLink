@@ -44,7 +44,6 @@
 
 # Kernel Module Compile Results
 *.mod*
-*.cmd
 .tmp_versions/
 modules.order
 Module.symvers
@@ -55,7 +54,8 @@ dkms.conf
 cmake-build-debug
 cmake-build-release
 
-build*/
+build-*/
+build/
 openwch/CH583EVT
 
 src-*/

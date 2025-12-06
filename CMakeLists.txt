@@ -1,4 +1,7 @@
 cmake_minimum_required(VERSION 3.10)
+set(CMAKE_SYSTEM_NAME Generic)
+set(CMAKE_SYSTEM_VERSION 1)
+set(CMAKE_TRY_COMPILE_TARGET_TYPE "STATIC_LIBRARY")
 include(cmake/toolchain.cmake)
 
 project(ch58x)
@@ -24,15 +27,3 @@ target_link_libraries(ch58x OpenWCH58x)
 # Generate .bin and .hex
 generate_binary_file(ch58x)
 generate_hex_file(ch58x)
-
-add_executable(ch58x_hardi2c src-i2c/app_i2c.c src-i2c/Main.c)
-target_link_libraries(ch58x_hardi2c OpenWCH58x)
-
-generate_binary_file(ch58x_hardi2c)
-generate_hex_file(ch58x_hardi2c)
-
-add_executable(ch58x_softi2c src-softi2c/IIC.c src-softi2c/Main.c)
-target_link_libraries(ch58x_softi2c OpenWCH58x)
-
-generate_binary_file(ch58x_softi2c)
-generate_hex_file(ch58x_softi2c)
