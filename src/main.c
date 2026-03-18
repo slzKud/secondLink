@@ -1055,12 +1055,14 @@ void DevEP1_OUT_Deal(uint8_t l)
         uint8_t *resp_data=NULL;
         uint8_t resp_data_length=0;
         int ret=-1;
-        print_hex("port data",pEP1_OUT_DataBuf,l);
+        //print_hex("port data",pEP1_OUT_DataBuf,l);
         ret=parse_data(pEP1_OUT_DataBuf,l,0,&resp_data,&resp_data_length);
-        printf("parse_data:ret=%d,resp_data_length=%d\n",ret,resp_data_length);
-        print_hex("parse_data:resp_data",resp_data,resp_data_length);
+        //printf("parse_data:ret=%d,resp_data_length=%d\n",ret,resp_data_length);
+        //print_hex("parse_data:resp_data",resp_data,resp_data_length);
         memset(pEP1_IN_DataBuf,0,64);
         memcpy(pEP1_IN_DataBuf,resp_data,resp_data_length);
+        free(resp_data);
+        resp_data=NULL;
         DevEP1_IN_Deal(64);
     }
     // TODO: Recv Data
@@ -1109,12 +1111,14 @@ void U2DevEP1_OUT_Deal(uint8_t l)
         uint8_t *resp_data=NULL;
         uint8_t resp_data_length=0;
         int ret=-1;
-        print_hex("usb 2port data",pU2EP1_OUT_DataBuf,l);
+        //print_hex("usb 2port data",pU2EP1_OUT_DataBuf,l);
         ret=parse_data(pU2EP1_OUT_DataBuf,l,0,&resp_data,&resp_data_length);
-        printf("parse_data:ret=%d,resp_data_length=%d\n",ret,resp_data_length);
-        print_hex("parse_data:resp_data",resp_data,resp_data_length);
+        //printf("parse_data:ret=%d,resp_data_length=%d\n",ret,resp_data_length);
+        //print_hex("parse_data:resp_data",resp_data,resp_data_length);
         memset(pU2EP1_IN_DataBuf,0,64);
         memcpy(pU2EP1_IN_DataBuf,resp_data,resp_data_length);
+        free(resp_data);
+        resp_data=NULL;
         U2DevEP1_IN_Deal(64);
     }
 }

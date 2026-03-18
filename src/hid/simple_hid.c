@@ -322,10 +322,14 @@ int handle_send_data(uint8_t *data, uint8_t data_length, int port_number, uint8_
     if(recv_port_number==0){
         memset(pEP1_IN_DataBuf,0,64);
         memcpy(pEP1_IN_DataBuf,recv_data_buffer,recv_data_len);
+        free(recv_data_buffer);
+        recv_data_buffer=NULL;
         DevEP1_IN_Deal(64);
     }else if(recv_port_number==1){
         memset(pU2EP1_IN_DataBuf,0,64);
         memcpy(pU2EP1_IN_DataBuf,recv_data_buffer,recv_data_len);
+        free(recv_data_buffer);
+        recv_data_buffer=NULL;
         U2DevEP1_IN_Deal(64);
     }
     return PARSE_STATUS_SUCCESS;
@@ -378,9 +382,16 @@ int parse_data(uint8_t *data, uint8_t data_length, int port_number, uint8_t **re
     {
         ret = handle_send_data(command_data, command_data_len, port_number, resp_data, resp_data_length);
     }
-    if (ret == PARSE_STATUS_SUCCESS && resp_data != NULL)
+    if (ret == PARSE_STATUS_SUCCESS && resp_data != NULL){
+        if(command_data==NULL)
+            free(command_data);
+        command_data=NULL;
         return ret;
+    }
 error:
     *resp_data_length = make_error_resp(ret, resp_data);
+    if(command_data==NULL)
+        free(command_data);
+    command_data=NULL;
     return ret;
 }
