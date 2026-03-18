@@ -317,7 +317,11 @@ int handle_send_data(uint8_t *data, uint8_t data_length, int port_number, uint8_
     //print_hex("handle_send_data:data", data + 1, data_length - 1);
     uint8_t data_len = make_simple_code_resp(COMMAND_SEND_DATA, 0x1, resp_data);
     *resp_data_length = data_len;
-    printf("already set recv_data\n");
+    //printf("already set recv_data\n");
+    if(recv_data_buffer != NULL) {
+      free(recv_data_buffer);
+      recv_data_buffer = NULL;
+  }
     uint8_t recv_data_len = make_recv_data_resp(recv_port_number, data + 1, data_length - 1, &recv_data_buffer);
     if(recv_port_number==0){
         memset(pEP1_IN_DataBuf,0,64);
@@ -383,14 +387,14 @@ int parse_data(uint8_t *data, uint8_t data_length, int port_number, uint8_t **re
         ret = handle_send_data(command_data, command_data_len, port_number, resp_data, resp_data_length);
     }
     if (ret == PARSE_STATUS_SUCCESS && resp_data != NULL){
-        if(command_data==NULL)
+        if(command_data!=NULL)
             free(command_data);
         command_data=NULL;
         return ret;
     }
 error:
     *resp_data_length = make_error_resp(ret, resp_data);
-    if(command_data==NULL)
+    if(command_data!=NULL)
         free(command_data);
     command_data=NULL;
     return ret;
