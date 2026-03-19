@@ -60,3 +60,4 @@ openwch/CH583EVT
 
 src-*/
 .vscode/
+*.pyc
