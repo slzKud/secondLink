@@ -16,6 +16,7 @@ from tkinter import scrolledtext, messagebox, ttk, filedialog
 import binascii
 import os
 import shutil
+from datetime import datetime
 from simple_send_data import SimpleSendData, SimpleRecvData, MultiSegmentCollector
 import protocol
 import usb_hid_transport
@@ -25,7 +26,7 @@ class HIDHostGUI:
     def __init__(self, root):
         self.root = root
         self.root.title("HID Host 模拟器 - USB HID版本")
-        self.root.geometry("1200x650")
+        self.root.geometry("1200x800")
 
         # USB HID相关
         self.hid_client = None
@@ -59,11 +60,24 @@ class HIDHostGUI:
         # 分段接收相关
         self.segment_collector = None
 
+        # 发送端等待接收端finish_status回传
+        self.waiting_for_finish_status = False
+
         # 创建界面
         self.create_widgets()
 
+        # 初始化日志文件
+        log_dir = os.path.join(os.getcwd(), "log")
+        os.makedirs(log_dir, exist_ok=True)
+        log_path = os.path.join(log_dir, f"session_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log")
+        self._log_file = open(log_path, 'w', encoding='utf-8')
+
         # 启动队列检查
         self.poll_queue()
+
+        # 自动检测设备
+        if self.auto_detect_var.get():
+            self.root.after(500, self._auto_detect_ports)
 
     def create_widgets(self):
         # 创建主框架
@@ -100,7 +114,7 @@ class HIDHostGUI:
         ttk.Radiobutton(row0, text="端口1 (PID=0x2108)", variable=self.port_id_var,
                         value="1").pack(side=tk.LEFT, padx=2)
 
-        # 第二行：连接按钮
+        # 第二行：连接按钮和自动检测
         row1 = ttk.Frame(frame_conn)
         row1.pack(fill=tk.X, pady=1)
         self.btn_connect = ttk.Button(row1, text="连接USB HID设备",
@@ -110,6 +124,16 @@ class HIDHostGUI:
                                          command=self.disconnect_hid,
                                          state=tk.DISABLED)
         self.btn_disconnect.pack(side=tk.LEFT, padx=3)
+        self.auto_detect_var = tk.BooleanVar(value=True)
+        ttk.Checkbutton(row1, text="自动检测", variable=self.auto_detect_var,
+                        command=self._auto_detect_ports).pack(side=tk.LEFT, padx=5)
+
+        # 检测状态行
+        row_detect = ttk.Frame(frame_conn)
+        row_detect.pack(fill=tk.X, pady=1)
+        self.detect_status_var = tk.StringVar(value="正在检测...")
+        ttk.Label(row_detect, textvariable=self.detect_status_var,
+                  foreground="gray").pack(side=tk.LEFT)
 
         # 状态栏
         self.status_var = tk.StringVar(value="未连接")
@@ -254,6 +278,35 @@ class HIDHostGUI:
         # 清除日志按钮
         ttk.Button(frame_log, text="清除日志", command=self.clear_log).pack(pady=2)
     # ------------------ USB HID操作 ------------------
+    def _auto_detect_ports(self):
+        """自动探测端口0和端口1的连接状态"""
+        if not self.auto_detect_var.get():
+            self.detect_status_var.set("自动检测已关闭")
+            return
+        if self.bound_port is not None:
+            self.detect_status_var.set(f"已连接端口{self.bound_port}")
+            return
+
+        vid_str = self.entry_vid.get().strip()
+        try:
+            vid = int(vid_str, 16) if vid_str.startswith("0x") else int(vid_str)
+        except ValueError:
+            self.detect_status_var.set("VID无效")
+            return
+
+        port0_ok, port1_ok = usb_hid_transport.probe_devices(vid)
+
+        if port0_ok and port1_ok:
+            self.detect_status_var.set("端口0:在线 端口1:在线 - 请选择端口")
+        elif port0_ok:
+            self.detect_status_var.set("端口0:在线 端口1:离线")
+            self.port_id_var.set("0")
+        elif port1_ok:
+            self.detect_status_var.set("端口0:离线 端口1:在线")
+            self.port_id_var.set("1")
+        else:
+            self.detect_status_var.set("端口0:离线 端口1:离线")
+
     def connect_hid(self):
         vid_str = self.entry_vid.get().strip()
         port_id = int(self.port_id_var.get())
@@ -269,6 +322,17 @@ class HIDHostGUI:
         except ValueError:
             messagebox.showerror("错误", "VID必须是十六进制或十进制数字")
             return
+
+        # 自动检测：连接前检查目标端口是否在线
+        if self.auto_detect_var.get():
+            port0_ok, port1_ok = usb_hid_transport.probe_devices(vid)
+            target_ok = port0_ok if port_id == 0 else port1_ok
+            if not target_ok:
+                messagebox.showwarning("设备未检测到",
+                    f"端口{port_id} (PID=0x{0x2107 + port_id:04X}) 未检测到设备。\n"
+                    f"仍尝试连接...")
+            self.detect_status_var.set(
+                f"端口0:{'在线' if port0_ok else '离线'} 端口1:{'在线' if port1_ok else '离线'}")
 
         # 创建HID客户端
         self.hid_client = usb_hid_transport.HIDClient(vid=vid, label=f"Port{port_id}")
@@ -297,7 +361,14 @@ class HIDHostGUI:
         self.status_var.set(f"已连接USB HID (端口{port_id})")
         self.btn_connect.config(state=tk.DISABLED)
         self.btn_disconnect.config(state=tk.NORMAL)
-        self.log(f"成功连接到USB HID设备 (VID=0x{vid:04X})，绑定端口{port_id}")
+
+        # 互锁：自动将发送端口设置为对方端口
+        target_port = 1 - port_id
+        self.send_file_port_var.set(str(target_port))
+        self.send_port_var.set(str(target_port))
+
+        self.log(f"成功连接到USB HID设备 (VID=0x{vid:04X})，绑定端口{port_id}，发送目标自动设为端口{target_port}")
+        self.detect_status_var.set(f"已连接端口{port_id}")
 
         # 启动接收线程
         if not self.hid_client.start_receive_thread(packet_handler=self.handle_hid_packet):
@@ -319,6 +390,12 @@ class HIDHostGUI:
             self.running = False
             self.hid_client.disconnect()
             self.hid_client = None
+        if hasattr(self, '_log_file') and self._log_file:
+            try:
+                self._log_file.close()
+            except Exception:
+                pass
+            self._log_file = None
         if self.recv_thread and self.recv_thread.is_alive():
             self.recv_thread.join(timeout=1.0)
         self.bound_port = None
@@ -326,6 +403,9 @@ class HIDHostGUI:
         self.btn_connect.config(state=tk.NORMAL)
         self.btn_disconnect.config(state=tk.DISABLED)
         self.log("已断开USB HID连接")
+        # 恢复自动检测
+        if self.auto_detect_var.get():
+            self.root.after(500, self._auto_detect_ports)
         # 清除文件传输状态
         self.file_transfer_in_progress = False
         self.send_progress['value'] = 0
@@ -363,6 +443,13 @@ class HIDHostGUI:
             # 特殊处理：如果是接收数据包 (0x04)，可能包含文件传输数据
             if cmd == protocol.CMD_RECV_DATA:
                 self.log("  [提示] 这是设备主动发送的接收数据包")
+                # 发送端等待finish_status回传的处理
+                if self.file_transfer_in_progress and self.waiting_for_finish_status:
+                    payload = data[1:] if len(data) > 1 else b''
+                    if len(payload) >= 3 and payload[0] == 0x04:
+                        self._handle_finish_status_from_receiver(data)
+                        return
+                    # 非finish_status的CMD_RECV_DATA，继续走正常接收逻辑
                 # 自动接收：如果没有接收会话且自动接收已启用，检测FILE_INFO握手
                 if not self.recv_file_obj and self.auto_recv_var.get() and data and len(data) > 2:
                     payload = data[1:]  # skip port byte
@@ -404,6 +491,13 @@ class HIDHostGUI:
             send_port = int(self.send_file_port_var.get())
         except ValueError:
             messagebox.showerror("错误", "无效的发送端口")
+            return
+
+        # 互锁检查：发送端口不能与绑定端口相同
+        if send_port == self.bound_port:
+            messagebox.showwarning("端口冲突",
+                f"发送端口{send_port}与当前绑定端口{self.bound_port}相同！\n"
+                f"请将发送端口改为端口{1 - self.bound_port}。")
             return
 
         try:
@@ -539,6 +633,7 @@ class HIDHostGUI:
             self.log(f"发送 {packet_type} 包 {self.current_block_index + 1}/{self.total_packets}")
             self.current_block_index += 1
             self.root.update_idletasks()  # 强制更新UI，避免卡住
+            # 不再自动发送下一个包，等待设备的CMD_SEND_DATA_RSP响应后再发送
         else:
             self.log("所有包已发送完成，等待响应...")
 
@@ -554,20 +649,90 @@ class HIDHostGUI:
         self.root.after(10, self.send_next_packet)
 
         if self.sent_packets >= self.total_packets:
-            # 当前段发送完成
-            if self.current_segment + 1 < self.total_segments:
-                # 还有下一段
-                self.current_segment += 1
-                self.log(f"段 {self.current_segment}/{self.total_segments} 发送完成，开始下一段")
-                self.root.after(10, lambda: self._start_send_segment(self.current_segment))
+            # 所有包已确认，等待接收端回传finish_status
+            self.log("所有数据包已确认，等待接收端finish_status...")
+            self.waiting_for_finish_status = True
+            self.send_progress_label.config(text=f"{seg_text}等待接收端校验...")
+            # 设置5秒超时，兼容不回传finish_status的旧版本
+            self.root.after(5000, self._finish_status_timeout)
+
+    def _handle_finish_status_from_receiver(self, data):
+        """处理接收端回传的finish_status"""
+        payload = data[1:]  # skip port byte
+        if len(payload) < 3 or payload[0] != 0x04:  # SIMPLE_CMD_FINISH_STATUS
+            self.log(f"收到非finish_status的CMD_RECV_DATA，忽略")
+            return
+
+        transfer_id = payload[1]
+        status = payload[2]
+        self.waiting_for_finish_status = False
+
+        if status == protocol.TRANSFER_SUCCESS:  # 0x01
+            self.log("接收端确认：传输成功，CRC校验通过")
+            self._complete_current_segment()
+
+        elif status == protocol.TRANSFER_MISSING_BLOCKS:  # 0x02
+            if len(payload) >= 4:
+                missing_count = payload[3]
+                missing_blocks = list(payload[4:4+missing_count])
+                self.log(f"接收端报告缺失 {missing_count} 个块: {missing_blocks}")
+                self._retransmit_blocks(missing_blocks)
             else:
-                # 全部完成
-                self.file_transfer_in_progress = False
-                self.send_progress_label.config(text="文件发送完成！")
-                if self.total_segments > 1:
-                    self.send_segment_label.config(text=f"全部 {self.total_segments} 段发送完成")
-                self.log("所有文件数据包发送完成")
-                messagebox.showinfo("完成", "文件发送完成")
+                self.log("接收端报告缺失块但未提供块号列表")
+                self._complete_current_segment()
+
+        elif status == protocol.TRANSFER_CRC_ERROR:  # 0x04
+            self.log("接收端报告CRC校验错误！数据可能已损坏")
+            self._complete_current_segment()
+
+        else:
+            self.log(f"接收端返回未知状态: 0x{status:02X}")
+            self._complete_current_segment()
+
+    def _retransmit_blocks(self, missing_block_ids):
+        """重传缺失的数据块"""
+        # 构建重传包列表：缺失的数据块 + 结束包
+        self.pending_data_packets = []
+        for block_id in missing_block_ids:
+            if 0 <= block_id < len(self.send_blocks):
+                block = self.send_blocks[block_id]
+                self.pending_data_packets.append(('data', block, block_id))
+            else:
+                self.log(f"警告：缺失块号 {block_id} 超出范围(0-{len(self.send_blocks)-1})，跳过")
+        self.pending_data_packets.append(('finish', self.finish_data))
+
+        self.total_packets = len(self.pending_data_packets)
+        self.sent_packets = 0
+        self.current_block_index = 0
+
+        self.log(f"开始重传 {len(missing_block_ids)} 个缺失块 + 结束包")
+        self.send_progress['maximum'] = self.total_packets
+        self.send_progress['value'] = 0
+        seg_text = f"段 {self.current_segment+1}/{self.total_segments} - " if self.total_segments > 1 else ""
+        self.send_progress_label.config(text=f"{seg_text}重传中... 0/{self.total_packets}")
+
+        self.root.after(10, self.send_next_packet)
+
+    def _finish_status_timeout(self):
+        """finish_status等待超时"""
+        if self.waiting_for_finish_status:
+            self.log("等待接收端finish_status超时，视为传输成功")
+            self._complete_current_segment()
+
+    def _complete_current_segment(self):
+        """完成当前段的发送"""
+        self.waiting_for_finish_status = False
+        if self.current_segment + 1 < self.total_segments:
+            self.current_segment += 1
+            self.log(f"段 {self.current_segment}/{self.total_segments} 发送完成，开始下一段")
+            self.root.after(10, lambda: self._start_send_segment(self.current_segment))
+        else:
+            self.file_transfer_in_progress = False
+            self.send_progress_label.config(text="文件发送完成！")
+            if self.total_segments > 1:
+                self.send_segment_label.config(text=f"全部 {self.total_segments} 段发送完成")
+            self.log("所有文件数据包发送完成")
+            messagebox.showinfo("完成", "文件发送完成")
 
     # ------------------ 文件接收解析 ------------------
     def prepare_receive(self):
@@ -647,6 +812,12 @@ class HIDHostGUI:
 
             if finish_status:
                 self.log(f"段{segment_index} 接收完成状态: {finish_status.hex()}")
+                # 将finish_status回传给发送端（通过MCU中继）
+                # port是接收方自己的端口，需要发送到对方端口
+                reply_port = 1 - port
+                send_back = bytes([reply_port]) + finish_status
+                self.send_packet(protocol.CMD_SEND_DATA_REQ, send_back)
+                self.log(f"已向发送端(端口{reply_port})回传finish_status")
 
             if total_segments > 1:
                 # 多段模式
@@ -748,7 +919,11 @@ class HIDHostGUI:
             f.write(bytes(self.recv_file_obj.data))
         self.log(f"文件已自动保存: {save_path}")
         self.recv_status_var.set(f"已保存: {os.path.basename(save_path)}")
-        # 提示用户选择最终位置
+        # 延迟弹出保存对话框，避免阻塞主线程导致finish_status回传延迟
+        self.root.after(0, lambda: self._ask_save_location(save_path, filename, recv_dir, ext))
+
+    def _ask_save_location(self, save_path, filename, recv_dir, ext):
+        """弹出保存位置选择对话框（延迟执行，避免阻塞主线程）"""
         final_path = filedialog.asksaveasfilename(
             title="文件已接收完成，选择保存位置",
             initialfile=filename,
@@ -881,6 +1056,11 @@ class HIDHostGUI:
         except ValueError:
             messagebox.showerror("错误", "端口号必须是数字")
             return
+        if self.bound_port is not None and port == self.bound_port:
+            messagebox.showwarning("端口冲突",
+                f"发送端口{port}与当前绑定端口{self.bound_port}相同！\n"
+                f"请将发送端口改为端口{1 - self.bound_port}。")
+            return
         hex_str = self.send_data_var.get().replace(" ", "")
         try:
             data_bytes = bytes.fromhex(hex_str)
@@ -917,9 +1097,17 @@ class HIDHostGUI:
             messagebox.showerror("发送失败", str(e))
 
     def log(self, msg):
-        """在日志区域添加消息"""
-        self.log_text.insert(tk.END, msg + "\n")
+        """在日志区域添加消息，并写入日志文件"""
+        timestamp = datetime.now().strftime("%H:%M:%S.%f")[:-3]
+        line = f"[{timestamp}] {msg}"
+        self.log_text.insert(tk.END, line + "\n")
         self.log_text.see(tk.END)
+        if hasattr(self, '_log_file') and self._log_file:
+            try:
+                self._log_file.write(line + "\n")
+                self._log_file.flush()
+            except Exception:
+                pass
 
     def clear_log(self):
         """清除日志"""

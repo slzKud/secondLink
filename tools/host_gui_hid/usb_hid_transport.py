@@ -310,3 +310,16 @@ class QueuePacketHandler:
             label: 客户端标签
         """
         self.queue.put((label, data))
+
+
+def probe_devices(vid):
+    """探测指定VID下端口0和端口1的连接状态
+
+    返回:
+        (port0_online, port1_online): 两个布尔值
+    """
+    if not HID_AVAILABLE:
+        return False, False
+    port0_online = len(hid.enumerate(vid, DEVICE_ID_PORT0)) > 0
+    port1_online = len(hid.enumerate(vid, DEVICE_ID_PORT1)) > 0
+    return port0_online, port1_online

@@ -61,3 +61,7 @@ openwch/CH583EVT
 src-*/
 .vscode/
 *.pyc
+*.spec
+memory
+tools/host_gui_hid/log
+tools/host_gui_hid/received_files

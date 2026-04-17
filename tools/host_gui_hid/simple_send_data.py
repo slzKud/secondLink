@@ -140,13 +140,8 @@ class SimpleRecvData:
         self.data = [0x0] * self.data_size
         self.block_list = []
 
-        # 计算块大小
-        if self.block_counts > 0:
-            self.block_size = self.data_size // self.block_counts
-            if self.data_size % self.block_counts != 0:
-                self.block_size += 1
-        else:
-            self.block_size = 0
+        # 块大小固定为54，与发送端SimpleSendData.block_size一致
+        self.block_size = 54
 
         self.file_info_parsed = True
         return True
@@ -170,16 +165,9 @@ class SimpleRecvData:
         if self.transfer_id != transfer_id:
             return False
 
-        # 确保block_size已计算
+        # 确保block_size已计算，固定为54与发送端一致
         if self.block_size <= 0:
-            # 如果block_size还未计算，根据当前接收的数据估算
-            if self.block_counts > 0:
-                self.block_size = self.data_size // self.block_counts
-                if self.data_size % self.block_counts != 0:
-                    self.block_size += 1
-            else:
-                # 如果还没有文件信息，暂时使用接收数据的长度作为块大小
-                self.block_size = len(recv_datas)
+            self.block_size = 54
 
         # 计算数据在self.data中的起始位置
         start_pos = block_number * self.block_size
